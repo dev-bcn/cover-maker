@@ -1,4 +1,4 @@
-# cover-maker
+# Session cover maker
 
 A Typescript application generating the javascript needed for automating the session cover generation with Adobe Photoshop.
 
@@ -14,4 +14,4 @@ npm run start
 
 * Open Adobe © Photoshop ™ and select File → command sequence → explore.
 * Select the javascript file generated and open it.
-* Enjoy your free time.
+* Enjoy your free time. 🍸

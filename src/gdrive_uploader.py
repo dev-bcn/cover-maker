@@ -25,7 +25,7 @@ def upload_output_folder(
     # 1. Authenticate
     try:
         creds = service_account.Credentials.from_service_account_file(
-            credentials_path, scopes=["https://www.googleapis.com/auth/drive.file"]
+            credentials_path, scopes=["https://www.googleapis.com/auth/drive"]
         )
         service = build("drive", "v3", credentials=creds)
     except Exception as e:

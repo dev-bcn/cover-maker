@@ -1,8 +1,39 @@
+import json
 import os
 
 from PIL import Image
 
-from src.generate_cards import _slugify
+from src.generate_cards import _resolve_credentials_path, _slugify
+
+
+def test_resolve_credentials_from_base64(monkeypatch, tmp_path) -> None:
+    import base64
+
+    fake_creds = json.dumps({"type": "service_account"})
+    encoded = base64.b64encode(fake_creds.encode()).decode()
+
+    monkeypatch.setenv("GDRIVE_CREDENTIALS_BASE64", encoded)
+    monkeypatch.delenv("GDRIVE_CREDENTIALS_PATH", raising=False)
+
+    result = _resolve_credentials_path()
+    assert result is not None
+    with open(result) as f:
+        assert json.load(f) == {"type": "service_account"}
+    os.unlink(result)
+
+
+def test_resolve_credentials_from_path(monkeypatch) -> None:
+    monkeypatch.delenv("GDRIVE_CREDENTIALS_BASE64", raising=False)
+    monkeypatch.setenv("GDRIVE_CREDENTIALS_PATH", "/some/path.json")
+
+    assert _resolve_credentials_path() == "/some/path.json"
+
+
+def test_resolve_credentials_returns_none(monkeypatch) -> None:
+    monkeypatch.delenv("GDRIVE_CREDENTIALS_BASE64", raising=False)
+    monkeypatch.delenv("GDRIVE_CREDENTIALS_PATH", raising=False)
+
+    assert _resolve_credentials_path() is None
 
 
 def test_slugify() -> None:
@@ -50,11 +81,14 @@ def test_main_with_upload(tmp_path, monkeypatch, dummy_card_single) -> None:
             with mock.patch(
                 "src.generate_cards.composite_card", return_value=Image.new("RGB", (100, 100))
             ):
-                with mock.patch("src.generate_cards.upload_output_folder", return_value=1) as mock_upload:
+                with mock.patch(
+                    "src.generate_cards.upload_output_folder", return_value=1
+                ) as mock_upload:
                     src.generate_cards.main()
 
-                    # Verify upload was called
-                    mock_upload.assert_called_once_with("fake-creds.json", "fake-folder-id", mock.ANY)
+                    mock_upload.assert_called_once_with(
+                        "fake-creds.json", "fake-folder-id", mock.ANY
+                    )
 
 
 def test_main_no_slug(tmp_path, monkeypatch, capsys) -> None:

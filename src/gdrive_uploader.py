@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 
 from google.oauth2 import service_account

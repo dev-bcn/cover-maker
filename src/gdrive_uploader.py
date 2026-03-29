@@ -37,7 +37,13 @@ def upload_output_folder(
     try:
         results = (
             service.files()
-            .list(q=query, spaces="drive", fields="files(id, name)")
+            .list(
+                q=query,
+                spaces="drive",
+                fields="files(id, name)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+            )
             .execute()
         )
     except Exception as e:
@@ -57,13 +63,18 @@ def upload_output_folder(
                 # Update existing file
                 file_id = existing_files[file_name]
                 logger.info(f"Updating existing file: {file_name} (ID: {file_id})")
-                service.files().update(fileId=file_id, media_body=media).execute()
+                service.files().update(
+                    fileId=file_id, media_body=media, supportsAllDrives=True
+                ).execute()
             else:
                 # Create new file
                 logger.info(f"Uploading new file: {file_name}")
                 file_metadata = {"name": file_name, "parents": [folder_id]}
                 service.files().create(
-                    body=file_metadata, media_body=media, fields="id"
+                    body=file_metadata,
+                    media_body=media,
+                    fields="id",
+                    supportsAllDrives=True,
                 ).execute()
 
             upload_count += 1

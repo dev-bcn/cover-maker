@@ -1,6 +1,8 @@
 import argparse
+import base64
 import os
 import re
+import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -12,10 +14,21 @@ from image_processor import composite_card
 
 
 def _slugify(text: str) -> str:
-    # Safe filename slugify
     slug = re.sub(r"[^\w\s-]", "", text.lower())
     slug = re.sub(r"[\s-]+", "-", slug).strip("-")
     return slug[:80]
+
+
+def _resolve_credentials_path() -> str | None:
+    b64_value = os.getenv("GDRIVE_CREDENTIALS_BASE64")
+    if b64_value:
+        decoded = base64.b64decode(b64_value)
+        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        tmp.write(decoded)
+        tmp.close()
+        return tmp.name
+
+    return os.getenv("GDRIVE_CREDENTIALS_PATH")
 
 
 def main() -> None:
@@ -66,12 +79,13 @@ def main() -> None:
 
     # 4. Optional Upload
     if args.upload:
-        creds_path = os.getenv("GDRIVE_CREDENTIALS_PATH")
+        creds_path = _resolve_credentials_path()
         folder_id = os.getenv("GDRIVE_FOLDER_ID")
 
         if not creds_path or not folder_id:
             print(
-                "Error: GDRIVE_CREDENTIALS_PATH and GDRIVE_FOLDER_ID must be set in .env for upload."
+                "Error: GDRIVE_FOLDER_ID and either GDRIVE_CREDENTIALS_BASE64 or"
+                " GDRIVE_CREDENTIALS_PATH must be set for upload."
             )
             return
 

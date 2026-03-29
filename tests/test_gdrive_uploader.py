@@ -79,7 +79,7 @@ def test_upload_output_folder_update_existing(tmp_path, mock_google_drive):
     assert mock_service.files().create.call_count == 0
     assert mock_service.files().update.call_count == 1
     mock_service.files().update.assert_called_with(
-        fileId="id123", media_body=mock_google_drive["media"].return_value
+        fileId="id123", media_body=mock_google_drive["media"].return_value, supportsAllDrives=True
     )
 
 

@@ -24,9 +24,9 @@ jobs:
         run: uv sync --locked
 
       - name: Write Google credentials file
-        # We store the JSON string in a GitHub Secret and write it to a temp file
-        # This file is NEVER committed to the repository.
-        run: echo '${{ secrets.GDRIVE_CREDENTIALS_JSON }}' > /tmp/gdrive-creds.json
+        env:
+          GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
+        run: printenv GDRIVE_CREDENTIALS_JSON > /tmp/gdrive-creds.json
 
       - name: Generate cards and upload
         env:

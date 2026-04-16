@@ -17,6 +17,7 @@ def mock_sessionize_response():
                 "isServiceSession": False,
                 "isPlenumSession": False,
                 "speakers": ["u1"],
+                "categoryItems": [123],
             },
             {
                 "id": "s2",
@@ -44,6 +45,12 @@ def mock_sessionize_response():
             {"id": "u1", "fullName": SPEAKER_ONE_NAME, "profilePicture": SPEAKER_ONE_PIC},
             {"id": "u2", "fullName": "Speaker Two", "profilePicture": "https://example.com/p2.jpg"},
         ],
+        "categories": [
+            {
+                "title": "Track",
+                "items": [{"id": 123, "name": "Testing Track"}]
+            }
+        ]
     }
 
 
@@ -60,7 +67,7 @@ def rgba_test_image():
 @pytest.fixture
 def dummy_card_single():
     s1 = Speaker(id="u1", full_name=SPEAKER_ONE_NAME, profile_picture_url=SPEAKER_ONE_PIC)
-    return SessionCard(talk_title="Single Talk", speakers=(s1,))
+    return SessionCard(talk_title="Single Talk", speakers=(s1,), track="Testing Track")
 
 
 @pytest.fixture

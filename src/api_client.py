@@ -21,6 +21,13 @@ def fetch_session_cards(api_slug: str) -> list[SessionCard]:
             profile_picture_url=speaker_data.get("profilePicture", ""),
         )
 
+    # Map tracks by item ID
+    track_lookup: dict[int, str] = {}
+    for cat in data.get("categories", []):
+        if "Track" in cat.get("title", ""):
+            for item in cat.get("items", []):
+                track_lookup[item.get("id")] = item.get("name")
+
     cards: list[SessionCard] = []
     for session_data in data.get("sessions", []):
         # Skip service and plenum sessions
@@ -32,10 +39,18 @@ def fetch_session_cards(api_slug: str) -> list[SessionCard]:
             if speaker_id in speaker_lookup:
                 session_speakers.append(speaker_lookup[speaker_id])
 
+        session_track = None
+        for cat_item in session_data.get("categoryItems", []):
+            if cat_item in track_lookup:
+                session_track = track_lookup[cat_item]
+                break
+
         if session_speakers:
             cards.append(
                 SessionCard(
-                    talk_title=session_data.get("title", ""), speakers=tuple(session_speakers)
+                    talk_title=session_data.get("title", ""),
+                    speakers=tuple(session_speakers),
+                    track=session_track,
                 )
             )
 

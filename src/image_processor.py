@@ -44,7 +44,7 @@ def normalize_speaker_image(subject: Image.Image, target_height: int) -> Image.I
     return subject.resize((new_width, target_height), Image.Resampling.LANCZOS)
 
 
-def composite_card(card: SessionCard, session: any) -> Image.Image:
+def composite_card(card: SessionCard, session: any, remove_bg: bool = True) -> Image.Image:
     # 1. Open template as RGBA
     if not TEMPLATE_PATH.exists():
         # Fallback for testing if template is missing
@@ -60,7 +60,14 @@ def composite_card(card: SessionCard, session: any) -> Image.Image:
         try:
             resp = requests.get(speaker.profile_picture_url)
             resp.raise_for_status()
-            subject = remove_background(resp.content, session)
+
+            if remove_bg:
+                subject = remove_background(resp.content, session)
+            else:
+                from io import BytesIO
+
+                subject = Image.open(BytesIO(resp.content)).convert("RGBA")
+
             subject = normalize_speaker_image(subject, SPEAKER_TARGET_HEIGHT)
             processed_speakers.append(subject)
         except Exception as e:

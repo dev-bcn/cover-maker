@@ -43,7 +43,7 @@ def test_slugify() -> None:
     assert _slugify("A" * 100) == "a" * 80  # Max length 80
 
 
-def test_main_with_sessions(tmp_path, monkeypatch, dummy_card_single) -> None:
+def test_main_with_sessions(tmp_path, monkeypatch, dummy_card_single, dummy_card_dual) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SESSIONIZE_API_SLUG", "test-slug")
     monkeypatch.setattr("sys.argv", ["src/generate_cards.py"])
@@ -53,7 +53,7 @@ def test_main_with_sessions(tmp_path, monkeypatch, dummy_card_single) -> None:
     import src.generate_cards
 
     # Mock all external dependencies
-    with mock.patch("src.generate_cards.fetch_session_cards", return_value=[dummy_card_single]):
+    with mock.patch("src.generate_cards.fetch_session_cards", return_value=[dummy_card_single, dummy_card_dual]):
         with mock.patch("src.generate_cards.new_session", return_value=None):
             with mock.patch(
                 "src.generate_cards.composite_card", return_value=Image.new("RGB", (100, 100))
@@ -62,6 +62,8 @@ def test_main_with_sessions(tmp_path, monkeypatch, dummy_card_single) -> None:
 
                 # Check output file exists
                 assert os.path.isfile("output/single-talk.png")
+                assert os.path.isfile("output/single-talk_original.png")
+                assert os.path.isfile("output/dual-talk.png")
 
 
 def test_main_with_upload(tmp_path, monkeypatch, dummy_card_single) -> None:

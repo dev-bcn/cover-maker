@@ -12,3 +12,4 @@ class Speaker:
 class SessionCard:
     talk_title: str
     speakers: tuple[Speaker, ...]
+    track: str | None = None

@@ -64,18 +64,71 @@ def main() -> None:
     # One rembg session for all images to avoid reloading model
     bg_session = new_session()
 
+    from collections import defaultdict
+
+    from PIL import Image
+
+    track_images = defaultdict(list)
+
     for i, card in enumerate(cards, 1):
         safe_name = _slugify(card.talk_title)
-        output_path = output_dir / f"{safe_name}.png"
 
         print(f"[{i}/{len(cards)}] Generating card for: {card.talk_title}")
 
+        track_name = card.track or "Unknown Track"
+
         try:
-            result_img = composite_card(card, bg_session)
-            result_img.save(output_path)
-            print(f"  Saved to: {output_path}")
+            if len(card.speakers) == 1:
+                output_path_rm = output_dir / f"{safe_name}.png"
+                output_path_bg = output_dir / f"{safe_name}_original.png"
+
+                if not output_path_rm.exists():
+                    result_img_rm = composite_card(card, bg_session, remove_bg=True)
+                    result_img_rm.save(output_path_rm)
+                    print(f"  Saved to: {output_path_rm}")
+                else:
+                    print(f"  Skipped (exists): {output_path_rm}")
+
+                if not output_path_bg.exists():
+                    result_img_bg = composite_card(card, bg_session, remove_bg=False)
+                    result_img_bg.save(output_path_bg)
+                    print(f"  Saved to: {output_path_bg}")
+                else:
+                    print(f"  Skipped (exists): {output_path_bg}")
+
+                track_images[track_name].append(output_path_rm)
+            else:
+                output_path = output_dir / f"{safe_name}.png"
+                if not output_path.exists():
+                    result_img = composite_card(card, bg_session, remove_bg=True)
+                    result_img.save(output_path)
+                    print(f"  Saved to: {output_path}")
+                else:
+                    print(f"  Skipped (exists): {output_path}")
+
+                track_images[track_name].append(output_path)
         except Exception as e:
             print(f"  Error generating card for {card.talk_title}: {e}")
+
+    print("\nGenerating PDFs...")
+    for track_name, image_paths in track_images.items():
+        if not image_paths:
+            continue
+        safe_track = _slugify(track_name)
+        pdf_path = output_dir / f"{safe_track}.pdf"
+        print(f"Generating PDF for track: {track_name} -> {pdf_path}")
+
+        try:
+            images = []
+            for img_path in image_paths:
+                if img_path.exists():
+                    images.append(Image.open(img_path).convert("RGB"))
+
+            if images:
+                images[0].save(pdf_path, save_all=True, append_images=images[1:], resolution=100.0)
+                print(f"  Saved PDF: {pdf_path}")
+        except Exception as e:
+            print(f"  Error generating PDF for track {track_name}: {e}")
 
     # 4. Optional Upload
     if args.upload:

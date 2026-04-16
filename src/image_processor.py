@@ -4,7 +4,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 from rembg import remove
 
-from models import SessionCard
+from models import SessionCard, Sponsor
 
 # Module-level constants (fill in values after placing assets)
 TEMPLATE_PATH: Path = Path("assets") / "base_template.png"
@@ -161,3 +161,83 @@ def _wrap_text(
         lines.append(" ".join(current_line))
 
     return lines
+
+
+def composite_sponsor_card(sponsor: Sponsor) -> Image.Image:
+    if not TEMPLATE_PATH.exists():
+        canvas = Image.new("RGBA", (1080, 1350), (200, 200, 200, 255))
+    else:
+        canvas = Image.open(TEMPLATE_PATH).convert("RGBA")
+
+    canvas_width, _ = canvas.size
+
+    # Download image
+    try:
+        resp = requests.get(sponsor.image, timeout=10)
+        resp.raise_for_status()
+        content = resp.content
+
+        from io import BytesIO
+
+        # Check if SVG
+        if sponsor.image.lower().endswith(".svg") or b"<svg" in content[:1024].lower():
+            import resvg_py
+            
+            # Render SVG to PNG bytes using resvg (handles gradients and modern SVG features)
+            # We decoded cautiously as most SVGs are UTF-8
+            svg_text = content.decode("utf-8", errors="ignore")
+            png_data = resvg_py.svg_to_bytes(svg_text)
+            subject = Image.open(BytesIO(png_data)).convert("RGBA")
+        else:
+            subject = Image.open(BytesIO(content)).convert("RGBA")
+
+        # Optionally normalize or resize (sponsors should fit within the box)
+        subject = normalize_speaker_image(subject, SPEAKER_TARGET_HEIGHT)
+
+        # Ensure width doesn't exceed safe width ratio
+        max_logo_width = int(canvas_width * 0.75)  # 75% of canvas width for logos
+        if subject.size[0] > max_logo_width:
+            aspect_ratio = subject.size[1] / subject.size[0]
+            new_height = int(max_logo_width * aspect_ratio)
+            subject = subject.resize((max_logo_width, new_height), Image.Resampling.LANCZOS)
+
+        # Draw sponsor logo centered (acting as single speaker)
+        paste_y = SPEAKER_ANCHOR_Y - subject.size[1]
+        
+        # we center based on canvas width vs subject width
+        logo_x = (canvas_width - subject.size[0]) // 2
+
+        canvas.paste(subject, (logo_x, paste_y), subject)
+
+    except Exception as e:
+        print(f"Error processing sponsor image for {sponsor.name}: {e}")
+
+    draw = ImageDraw.Draw(canvas)
+    try:
+        font_name = ImageFont.truetype(str(FONT_PATH), FONT_SIZE_NAME)
+        font_title = ImageFont.truetype(str(FONT_PATH), FONT_SIZE_TITLE)
+    except Exception:
+        font_name = ImageFont.load_default()
+        font_title = ImageFont.load_default()
+
+    # Sponsor category (taking the title's place)
+    lines = _wrap_text(sponsor.category, font_title, int(canvas_width * TEXT_SAFE_WIDTH_RATIO), draw)
+    category_start = TEXT_AREA_Y_START + FONT_SIZE_NAME + 20
+    current_y = TEXT_AREA_Y_START + FONT_SIZE_NAME + 20
+    for line in lines:
+        line_bbox = draw.textbbox((0, 0), line, font=font_title)
+        line_w = line_bbox[2] - line_bbox[0]
+        line_x = (canvas_width - line_w) // 2
+        draw.text((line_x + 2, current_y + 2), line, font=font_title, fill=TEXT_SHADOW_COLOR)
+        draw.text((line_x, current_y), line, font=font_title, fill=TEXT_PRIMARY_COLOR)
+        current_y += (line_bbox[3] - line_bbox[1]) + 10
+
+    # Sponsor name (taking the name's place)
+    name_bbox = draw.textbbox((0, 0), sponsor.name, font=font_name)
+    name_w = name_bbox[2] - name_bbox[0]
+    name_x = (canvas_width - name_w) // 2
+
+    draw.text((name_x + 2, TEXT_AREA_Y_START + 2), sponsor.name, font=font_name, fill=TEXT_SHADOW_COLOR)
+    draw.text((name_x, TEXT_AREA_Y_START), sponsor.name, font=font_name, fill=TEXT_PRIMARY_COLOR)
+
+    return canvas.convert("RGB")

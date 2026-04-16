@@ -55,3 +55,29 @@ def fetch_session_cards(api_slug: str) -> list[SessionCard]:
             )
 
     return cards
+
+
+def fetch_sponsors(year: str = "2026") -> list["Sponsor"]:
+    import os
+    from models import Sponsor
+
+    token = os.getenv("API_AUTH_TOKEN", "")
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    url = f"https://www.devbcn.com/api/sponsors/{year}"
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+
+    sponsors = []
+    for item in data:
+        sponsors.append(
+            Sponsor(
+                name=item.get("name", ""),
+                category=item.get("category", ""),
+                image=item.get("image", ""),
+            )
+        )
+    return sponsors

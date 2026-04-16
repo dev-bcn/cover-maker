@@ -45,4 +45,28 @@ def test_fetch_skips_unconfirmed_speakers(mock_sessionize_response: dict) -> Non
         cards = fetch_session_cards(api_slug)
 
         # Still only 2 valid cards with speakers
+        # Still only 2 valid cards with speakers
         assert len(cards) == 2
+
+
+def test_fetch_sponsors(monkeypatch) -> None:
+    from src.api_client import fetch_sponsors
+
+    monkeypatch.setenv("API_AUTH_TOKEN", "test-token")
+    url = "https://www.devbcn.com/api/sponsors/2026"
+    mock_data = [
+        {
+            "name": "Edpuzzle",
+            "category": "Premium Sponsor",
+            "image": "https://www.devbcn.com/edpuzzle.svg"
+        }
+    ]
+
+    with responses.RequestsMock() as rsps:
+        rsps.add(responses.GET, url, json=mock_data, status=200)
+        sponsors = fetch_sponsors("2026")
+
+        assert len(sponsors) == 1
+        assert sponsors[0].name == "Edpuzzle"
+        assert sponsors[0].category == "Premium Sponsor"
+        assert sponsors[0].image == "https://www.devbcn.com/edpuzzle.svg"

@@ -104,3 +104,24 @@ def test_render_text_block_error_handling(dummy_card_single) -> None:
 
     # Should not raise even if font path is invalid (it falls back to default)
     _render_text_block(draw, dummy_card_single, 1080)
+
+
+def test_composite_sponsor_card(rgba_test_image) -> None:
+    import unittest.mock as mock
+    from src.models import Sponsor
+    import src.image_processor
+
+    sponsor = Sponsor(name="Test Sponsor", category="Test Category", image="http://test.com/logo.png")
+
+    with mock.patch("requests.get") as mock_get:
+        buf = io.BytesIO()
+        rgba_test_image.save(buf, format="PNG")
+        mock_get.return_value.content = buf.getvalue()
+        mock_get.return_value.raise_for_status = lambda: None
+
+        result = src.image_processor.composite_sponsor_card(sponsor)
+
+        assert isinstance(result, Image.Image)
+        assert result.size == (1080, 1350)
+        assert result.mode == "RGB"
+        assert mock_get.call_count == 1

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  generate-and-upload:
+  generate-speakers:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -23,14 +23,102 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      - name: Validate required secrets
+      - name: Cache output directory
+        id: cache-output
+        uses: actions/cache@v4
+        with:
+          path: output
+          key: ${{ runner.os }}-output-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-output-
+
+      - name: Generate speaker cards
         env:
           SESSIONIZE_API_SLUG: ${{ secrets.SESSIONIZE_API_SLUG }}
+        run: uv run python src/generate_cards.py --speakers
+
+      - name: Upload speaker artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: speaker-configs
+          path: output/*.png
+          if-no-files-found: ignore
+
+  generate-sponsors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Cache output directory
+        uses: actions/cache@v4
+        with:
+          path: output
+          key: ${{ runner.os }}-output-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-output-
+
+      - name: Generate sponsor cards
+        env:
+          API_AUTH_TOKEN: ${{ secrets.API_AUTH_TOKEN }}
+        run: uv run python src/generate_cards.py --sponsors
+
+      - name: Upload sponsor artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sponsor-configs
+          path: output/sponsor-*.png
+          if-no-files-found: ignore
+
+  finalize:
+    runs-on: ubuntu-latest
+    needs: [generate-speakers, generate-sponsors]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Cache output directory
+        uses: actions/cache@v4
+        with:
+          path: output
+          key: ${{ runner.os }}-output-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-output-
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: output
+          merge-multiple: true
+
+      - name: Validate required secrets
+        env:
           GDRIVE_CREDENTIALS_BASE64: ${{ secrets.GDRIVE_CREDENTIALS_BASE64 }}
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: |
           missing=()
-          [ -z "$SESSIONIZE_API_SLUG" ] && missing+=("SESSIONIZE_API_SLUG")
           [ -z "$GDRIVE_CREDENTIALS_BASE64" ] && missing+=("GDRIVE_CREDENTIALS_BASE64")
           [ -z "$GDRIVE_FOLDER_ID" ] && missing+=("GDRIVE_FOLDER_ID")
           if [ ${#missing[@]} -gt 0 ]; then
@@ -45,12 +133,12 @@ jobs:
           echo "$GDRIVE_CREDENTIALS_BASE64" | base64 --decode > /tmp/gdrive-creds.json
           python3 -c "import json; json.load(open('/tmp/gdrive-creds.json'))" || { echo "::error::Invalid JSON in GDRIVE_CREDENTIALS_BASE64"; exit 1; }
 
-      - name: Generate cards and upload
+      - name: Generate PDFs and Upload
         env:
           SESSIONIZE_API_SLUG: ${{ secrets.SESSIONIZE_API_SLUG }}
           GDRIVE_CREDENTIALS_PATH: /tmp/gdrive-creds.json
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-        run: uv run python src/generate_cards.py --upload
+        run: uv run python src/generate_cards.py --pdf --upload
 
       - name: Cleanup credentials
         if: always()

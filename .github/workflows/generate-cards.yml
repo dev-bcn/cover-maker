@@ -25,7 +25,7 @@ jobs:
 
       - name: Cache output directory
         id: cache-output
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: output
           key: ${{ runner.os }}-output-${{ github.job }}-${{ github.run_id }}
@@ -39,7 +39,7 @@ jobs:
         run: uv run python src/generate_cards.py --speakers
 
       - name: Upload speaker artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: speaker-configs
           path: output/*.png
@@ -63,7 +63,7 @@ jobs:
         run: uv sync --locked
 
       - name: Cache output directory
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: output
           key: ${{ runner.os }}-output-${{ github.job }}-${{ github.run_id }}
@@ -86,7 +86,7 @@ jobs:
         run: uv run python src/generate_cards.py --sponsors
 
       - name: Upload sponsor artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sponsor-configs
           path: output/sponsor-*.png
@@ -111,7 +111,7 @@ jobs:
         run: uv sync --locked
 
       - name: Cache output directory
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: output
           key: ${{ runner.os }}-output-${{ github.job }}-${{ github.run_id }}
@@ -120,7 +120,7 @@ jobs:
             ${{ runner.os }}-output-
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: output
           merge-multiple: true

@@ -37,3 +37,4 @@ select = ["E", "F", "I", "N", "UP", "ANN"]
 [tool.pytest.ini_options]
 addopts = "--cov=src --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["tests"]
+pythonpath = ["src"]

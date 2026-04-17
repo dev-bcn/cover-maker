@@ -53,7 +53,8 @@ def test_main_with_sessions(tmp_path, monkeypatch, dummy_card_single, dummy_card
     import src.generate_cards
 
     # Mock all external dependencies
-    with mock.patch("src.generate_cards.fetch_session_cards", return_value=[dummy_card_single, dummy_card_dual]):
+    cards = [dummy_card_single, dummy_card_dual]
+    with mock.patch("src.generate_cards.fetch_session_cards", return_value=cards):
         with mock.patch("src.generate_cards.new_session", return_value=None):
             with mock.patch(
                 "src.generate_cards.composite_card", return_value=Image.new("RGB", (100, 100))

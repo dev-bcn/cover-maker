@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -18,5 +19,5 @@ class SessionCard:
 @dataclass(frozen=True)
 class Sponsor:
     name: str
-    category: str
-    image: str
+    category: Literal["Premium Sponsor", "Regular Sponsor", "Technical Sponsor"]
+    logo_url: str

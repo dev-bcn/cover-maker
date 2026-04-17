@@ -1,16 +1,24 @@
 import argparse
 import base64
+import datetime
+import logging
 import os
 import re
 import tempfile
+from collections import defaultdict
 from pathlib import Path
 
 from dotenv import load_dotenv
+from PIL import Image
 from rembg import new_session
 
-from api_client import fetch_session_cards
+from api_client import fetch_session_cards, fetch_sponsors
 from gdrive_uploader import upload_output_folder
-from image_processor import composite_card
+from image_processor import composite_card, composite_sponsor_card
+
+# Setup logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 def _slugify(text: str) -> str:
@@ -56,8 +64,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--year",
-        default="2026",
-        help="Year for sponsors API (default: 2026).",
+        default=str(datetime.date.today().year),
+        help="Year for sponsors API (default: current year).",
     )
     args = parser.parse_args()
 
@@ -127,39 +135,32 @@ def _process_speakers(api_slug: str, output_dir: Path) -> None:
         print(f"[{i}/{len(cards)}] Generating card for: {card.talk_title}")
 
         try:
-            if len(card.speakers) == 1:
-                output_path_rm = output_dir / f"{safe_name}.png"
-                output_path_bg = output_dir / f"{safe_name}_original.png"
+            output_path_rm = output_dir / f"{safe_name}.png"
+            output_path_bg = output_dir / f"{safe_name}_original.png"
 
-                if not output_path_rm.exists():
-                    result_img_rm = composite_card(card, bg_session, remove_bg=True)
+            # 1. Background Removed version
+            if not output_path_rm.exists():
+                result_img_rm = composite_card(card, bg_session, remove_bg=True)
+                if result_img_rm:
                     result_img_rm.save(output_path_rm)
                     print(f"  Saved to: {output_path_rm}")
-                else:
-                    print(f"  Skipped (exists): {output_path_rm}")
+            else:
+                print(f"  Skipped (exists): {output_path_rm}")
 
-                if not output_path_bg.exists():
-                    result_img_bg = composite_card(card, bg_session, remove_bg=False)
+            # 2. Original Background version
+            if not output_path_bg.exists():
+                result_img_bg = composite_card(card, bg_session, remove_bg=False)
+                if result_img_bg:
                     result_img_bg.save(output_path_bg)
                     print(f"  Saved to: {output_path_bg}")
-                else:
-                    print(f"  Skipped (exists): {output_path_bg}")
             else:
-                output_path = output_dir / f"{safe_name}.png"
-                if not output_path.exists():
-                    result_img = composite_card(card, bg_session, remove_bg=True)
-                    result_img.save(output_path)
-                    print(f"  Saved to: {output_path}")
-                else:
-                    print(f"  Skipped (exists): {output_path}")
+                print(f"  Skipped (exists): {output_path_bg}")
 
-        except Exception as e:
-            print(f"  Error generating card for {card.talk_title}: {e}")
+        except Exception:
+            logger.error(f"Error generating card for {card.talk_title}", exc_info=True)
 
 
 def _process_pdfs(api_slug: str, output_dir: Path) -> None:
-    from PIL import Image
-    from collections import defaultdict
 
     print(f"\nFetching sessions for PDFs (slug: {api_slug})...")
     try:
@@ -169,38 +170,56 @@ def _process_pdfs(api_slug: str, output_dir: Path) -> None:
         return
 
     track_images = defaultdict(list)
+    track_images_orig = defaultdict(list)
+
     for card in cards:
         safe_name = _slugify(card.talk_title)
-        output_path = output_dir / f"{safe_name}.png"
+        path_rm = output_dir / f"{safe_name}.png"
+        path_orig = output_dir / f"{safe_name}_original.png"
+        
         track_name = card.track or "Unknown Track"
-        if output_path.exists():
-            track_images[track_name].append(output_path)
+        
+        if path_rm.exists():
+            track_images[track_name].append(path_rm)
+        if path_orig.exists():
+            track_images_orig[track_name].append(path_orig)
 
     print("\nGenerating PDFs from existing speaker cards...")
-    for track_name, image_paths in track_images.items():
-        if not image_paths:
-            continue
+    all_tracks = set(track_images.keys()) | set(track_images_orig.keys())
+    
+    for track_name in all_tracks:
         safe_track = _slugify(track_name)
-        pdf_path = output_dir / f"{safe_track}.pdf"
-        print(f"Generating PDF for track: {track_name} -> {pdf_path}")
+        
+        # 1. Standard PDF (Background Removed)
+        if track_images[track_name]:
+            pdf_path = output_dir / f"{safe_track}.pdf"
+            _create_pdf(track_name, track_images[track_name], pdf_path)
 
-        try:
-            images = []
-            for img_path in image_paths:
-                if img_path.exists():
-                    images.append(Image.open(img_path).convert("RGB"))
+        # 2. Original PDF (No Background Removal)
+        if track_images_orig[track_name]:
+            pdf_path_orig = output_dir / f"{safe_track}_original.pdf"
+            _create_pdf(f"{track_name} (Original)", track_images_orig[track_name], pdf_path_orig)
 
-            if images:
-                # resolution=100.0 is used in the original code
-                images[0].save(pdf_path, save_all=True, append_images=images[1:], resolution=100.0)
-                print(f"  Saved PDF: {pdf_path}")
-        except Exception as e:
-            print(f"  Error generating PDF for track {track_name}: {e}")
+
+def _create_pdf(label: str, image_paths: list[Path], pdf_path: Path) -> None:
+    print(f"Generating PDF for track: {label} -> {pdf_path}")
+    try:
+        images = []
+        for img_path in image_paths:
+            with Image.open(img_path) as img:
+                images.append(img.convert("RGB").copy())
+
+        if images:
+            images[0].save(pdf_path, save_all=True, append_images=images[1:], resolution=100.0)
+            print(f"  Saved PDF: {pdf_path}")
+            
+            for im in images:
+                im.close()
+    except Exception:
+        logger.error(f"Error generating PDF: {pdf_path}", exc_info=True)
 
 
 def _process_sponsors(year: str, output_dir: Path) -> None:
-    from api_client import fetch_sponsors
-    from image_processor import composite_sponsor_card
 
     print(f"\nFetching sponsors for year {year}...")
     try:
@@ -222,8 +241,11 @@ def _process_sponsors(year: str, output_dir: Path) -> None:
         print(f"[{i}/{len(sponsors)}] Generating card for: {sponsor.name}")
         try:
             result_img = composite_sponsor_card(sponsor)
-            result_img.save(output_path)
-            print(f"  Saved to: {output_path}")
+            if result_img:
+                result_img.save(output_path)
+                print(f"  Saved to: {output_path}")
+            else:
+                print(f"  Skipped (processing failure): {sponsor.name}")
         except Exception as e:
             print(f"  Error processing sponsor {sponsor.name}: {e}")
 

@@ -1,6 +1,8 @@
+import os
+
 import requests
 
-from models import SessionCard, Speaker
+from models import SessionCard, Speaker, Sponsor
 
 SESSIONIZE_BASE_URL = "https://sessionize.com/api/v2"
 
@@ -57,9 +59,7 @@ def fetch_session_cards(api_slug: str) -> list[SessionCard]:
     return cards
 
 
-def fetch_sponsors(year: str = "2026") -> list["Sponsor"]:
-    import os
-    from models import Sponsor
+def fetch_sponsors(year: str = "2026") -> list[Sponsor]:
 
     token = os.getenv("API_AUTH_TOKEN", "")
     headers = {}
@@ -77,7 +77,7 @@ def fetch_sponsors(year: str = "2026") -> list["Sponsor"]:
             Sponsor(
                 name=item.get("name", ""),
                 category=item.get("category", ""),
-                image=item.get("image", ""),
+                logo_url=item.get("image", ""),
             )
         )
     return sponsors

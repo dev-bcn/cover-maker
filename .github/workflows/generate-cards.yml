@@ -28,8 +28,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: output
-          key: ${{ runner.os }}-output-${{ github.run_id }}
+          key: ${{ runner.os }}-output-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-output-${{ github.job }}-
             ${{ runner.os }}-output-
 
       - name: Generate speaker cards
@@ -65,9 +66,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: output
-          key: ${{ runner.os }}-output-${{ github.run_id }}
+          key: ${{ runner.os }}-output-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-output-${{ github.job }}-
             ${{ runner.os }}-output-
+
+      - name: Validate Sponsor API secrets
+        env:
+          API_AUTH_TOKEN: ${{ secrets.API_AUTH_TOKEN }}
+        run: |
+          if [ -z "$API_AUTH_TOKEN" ]; then
+            echo "::error::API_AUTH_TOKEN secret is missing or empty. Skipping sponsor generation would fail logic later."
+            exit 1
+          fi
 
       - name: Generate sponsor cards
         env:
@@ -103,8 +114,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: output
-          key: ${{ runner.os }}-output-${{ github.run_id }}
+          key: ${{ runner.os }}-output-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-output-${{ github.job }}-
             ${{ runner.os }}-output-
 
       - name: Download all artifacts

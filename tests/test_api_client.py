@@ -1,6 +1,6 @@
 import responses
 
-from src.api_client import SESSIONIZE_BASE_URL, fetch_session_cards
+from src.api_client import SESSIONIZE_BASE_URL, fetch_session_cards, fetch_sponsors
 
 
 def test_fetch_returns_correct_cards(mock_sessionize_response: dict) -> None:
@@ -44,16 +44,14 @@ def test_fetch_skips_unconfirmed_speakers(mock_sessionize_response: dict) -> Non
         rsps.add(responses.GET, url, json=mock_sessionize_response, status=200)
         cards = fetch_session_cards(api_slug)
 
-        # Still only 2 valid cards with speakers
-        # Still only 2 valid cards with speakers
+
         assert len(cards) == 2
 
 
 def test_fetch_sponsors(monkeypatch) -> None:
-    from src.api_client import fetch_sponsors
-
     monkeypatch.setenv("API_AUTH_TOKEN", "test-token")
-    url = "https://www.devbcn.com/api/sponsors/2026"
+    year = "2026"
+    url = f"https://www.devbcn.com/api/sponsors/{year}"
     mock_data = [
         {
             "name": "Edpuzzle",
@@ -63,10 +61,24 @@ def test_fetch_sponsors(monkeypatch) -> None:
     ]
 
     with responses.RequestsMock() as rsps:
-        rsps.add(responses.GET, url, json=mock_data, status=200)
-        sponsors = fetch_sponsors("2026")
+        # Define a callback to verify headers and return mock data
+        def request_callback(request):
+            auth_header = request.headers.get("Authorization")
+            if auth_header != "Bearer test-token":
+                return (401, {}, "Unauthorized")
+            import json
+            return (200, {"Content-Type": "application/json"}, json.dumps(mock_data))
+
+        rsps.add_callback(
+            responses.GET,
+            url,
+            callback=request_callback,
+            content_type="application/json",
+        )
+        
+        sponsors = fetch_sponsors(year)
 
         assert len(sponsors) == 1
         assert sponsors[0].name == "Edpuzzle"
         assert sponsors[0].category == "Premium Sponsor"
-        assert sponsors[0].image == "https://www.devbcn.com/edpuzzle.svg"
+        assert sponsors[0].logo_url == "https://www.devbcn.com/edpuzzle.svg"

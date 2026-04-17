@@ -71,17 +71,12 @@ def main() -> None:
 
     # 1. Setup
     load_dotenv()
-    api_slug = os.getenv("SESSIONIZE_API_SLUG")
-    if not api_slug:
-        print("Error: SESSIONIZE_API_SLUG not found in .env")
-        return
 
     do_speakers = args.speakers
     do_sponsors = args.sponsors
     do_pdf = args.pdf
 
     if not do_speakers and not do_sponsors and not do_pdf:
-        # Default behavior: run everything
         do_speakers = True
         do_sponsors = True
         do_pdf = True
@@ -90,12 +85,20 @@ def main() -> None:
     output_dir.mkdir(exist_ok=True)
 
     if do_speakers:
+        api_slug = os.getenv("SESSIONIZE_API_SLUG")
+        if not api_slug:
+            print("Error: SESSIONIZE_API_SLUG not found in .env")
+            return
         _process_speakers(api_slug, output_dir)
 
     if do_sponsors:
         _process_sponsors(args.year, output_dir)
 
     if do_pdf:
+        api_slug = os.getenv("SESSIONIZE_API_SLUG")
+        if not api_slug:
+            print("Error: SESSIONIZE_API_SLUG not found in .env")
+            return
         _process_pdfs(api_slug, output_dir)
 
     # 4. Optional Upload

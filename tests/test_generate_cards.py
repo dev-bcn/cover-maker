@@ -121,3 +121,24 @@ def test_main_fetch_error(tmp_path, monkeypatch, capsys) -> None:
 
     captured = capsys.readouterr()
     assert "Error fetching sessions: API Error" in captured.out
+
+
+def test_sponsors_only_does_not_require_sessionize_slug(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SESSIONIZE_API_SLUG", raising=False)
+    monkeypatch.setattr("sys.argv", ["src/generate_cards.py", "--sponsors"])
+
+    import unittest.mock as mock
+
+    import src.generate_cards
+
+    with mock.patch(
+        "src.generate_cards.fetch_sponsors", return_value=[]
+    ) as mock_sponsors:
+        src.generate_cards.main()
+        mock_sponsors.assert_called_once()
+
+    captured = capsys.readouterr()
+    assert "SESSIONIZE_API_SLUG not found" not in captured.out

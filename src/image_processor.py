@@ -90,8 +90,13 @@ def composite_card(card: SessionCard, session: any, remove_bg: bool = True) -> I
     processed_speakers = []
     for speaker in card.speakers:
         try:
-            resp = requests.get(speaker.profile_picture_url)
+            resp = requests.get(speaker.profile_picture_url, timeout=15)
             resp.raise_for_status()
+            logger.debug(
+                "Downloaded speaker image for %s (%d bytes)",
+                speaker.full_name,
+                len(resp.content),
+            )
 
             if remove_bg:
                 subject = remove_background(resp.content, session)
@@ -135,7 +140,9 @@ def _render_text_block(draw: ImageDraw.ImageDraw, card: SessionCard, canvas_widt
         font_name = ImageFont.truetype(str(FONT_PATH), FONT_SIZE_NAME)
         font_title = ImageFont.truetype(str(FONT_PATH), FONT_SIZE_TITLE)
     except Exception:
-        # Fallback to default font if custom font is missing
+        logger.warning(
+            "Custom font not found at %s — falling back to default", FONT_PATH, exc_info=True
+        )
         font_name = ImageFont.load_default()
         font_title = ImageFont.load_default()
 

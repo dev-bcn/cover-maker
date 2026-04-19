@@ -126,7 +126,9 @@ def test_composite_sponsor_card(rgba_test_image) -> None:
     import src.image_processor
     from src.models import Sponsor
 
-    sponsor = Sponsor(name="Test Sponsor", category="Test Category", logo_url="http://test.com/logo.png")
+    sponsor = Sponsor(
+        name="Test Sponsor", category="Test Category", logo_url="http://test.com/logo.png"
+    )
 
     with mock.patch.object(src.image_processor, "TEMPLATE_PATH", Path("/nonexistent/template.png")):
         with mock.patch("requests.get") as mock_get:
@@ -207,7 +209,9 @@ def test_composite_sponsor_card_returns_none_on_request_failure() -> None:
     import src.image_processor
     from src.models import Sponsor
 
-    sponsor = Sponsor(name="Fail Sponsor", category="Regular Sponsor", logo_url="http://test.com/logo.png")
+    sponsor = Sponsor(
+        name="Fail Sponsor", category="Regular Sponsor", logo_url="http://test.com/logo.png"
+    )
 
     with mock.patch("requests.get", side_effect=Exception("request failed")):
         result = src.image_processor.composite_sponsor_card(sponsor)
@@ -221,7 +225,9 @@ def test_composite_sponsor_card_svg(rgba_test_image) -> None:
     import src.image_processor
     from src.models import Sponsor
 
-    sponsor = Sponsor(name="SVG Sponsor", category="Premium Sponsor", logo_url="http://test.com/logo.svg")
+    sponsor = Sponsor(
+        name="SVG Sponsor", category="Premium Sponsor", logo_url="http://test.com/logo.svg"
+    )
 
     png_buf = _io.BytesIO()
     rgba_test_image.save(png_buf, format="PNG")
@@ -271,7 +277,9 @@ def test_composite_sponsor_card_uses_template_when_present(rgba_test_image, tmp_
     template_path = tmp_path / "base_template.png"
     template.save(template_path)
 
-    sponsor = Sponsor(name="Tpl Sponsor", category="Technical Sponsor", logo_url="http://test.com/logo.png")
+    sponsor = Sponsor(
+        name="Tpl Sponsor", category="Technical Sponsor", logo_url="http://test.com/logo.png"
+    )
 
     with mock.patch.object(src.image_processor, "TEMPLATE_PATH", template_path):
         with mock.patch("requests.get") as mock_get:
@@ -303,5 +311,3 @@ def test_render_text_block_with_real_font(dummy_card_single, tmp_path) -> None:
             img = Image.new("RGB", (1080, 1350))
             draw = ImageDraw.Draw(img)
             _render_text_block(draw, dummy_card_single, 1080)
-
-

@@ -16,9 +16,7 @@ from api_client import fetch_session_cards, fetch_sponsors
 from gdrive_uploader import upload_output_folder
 from image_processor import composite_card, composite_sponsor_card
 
-# Setup logger
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 def _slugify(text: str) -> str:
@@ -40,7 +38,12 @@ def _resolve_credentials_path() -> str | None:
 
 
 def main() -> None:
-    # 0. CLI Args
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+
     parser = argparse.ArgumentParser(description="Generate speaker cards from Sessionize data.")
     parser.add_argument(
         "--upload",
@@ -69,7 +72,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # 1. Setup
     load_dotenv()
 
     do_speakers = args.speakers
@@ -87,7 +89,7 @@ def main() -> None:
     if do_speakers:
         api_slug = os.getenv("SESSIONIZE_API_SLUG")
         if not api_slug:
-            print("Error: SESSIONIZE_API_SLUG not found in .env")
+            logger.error("SESSIONIZE_API_SLUG is not set — cannot generate speaker cards")
             return
         _process_speakers(api_slug, output_dir)
 
@@ -97,117 +99,139 @@ def main() -> None:
     if do_pdf:
         api_slug = os.getenv("SESSIONIZE_API_SLUG")
         if not api_slug:
-            print("Error: SESSIONIZE_API_SLUG not found in .env")
+            logger.error("SESSIONIZE_API_SLUG is not set — cannot generate PDFs")
             return
         _process_pdfs(api_slug, output_dir)
 
-    # 4. Optional Upload
     if args.upload:
         creds_path = _resolve_credentials_path()
         folder_id = os.getenv("GDRIVE_FOLDER_ID")
 
         if not creds_path or not folder_id:
-            print(
-                "Error: GDRIVE_FOLDER_ID and either GDRIVE_CREDENTIALS_BASE64 or"
-                " GDRIVE_CREDENTIALS_PATH must be set for upload."
+            logger.error(
+                "Upload requires GDRIVE_FOLDER_ID and either GDRIVE_CREDENTIALS_BASE64"
+                " or GDRIVE_CREDENTIALS_PATH"
             )
             return
 
-        print("\nUploading to Google Drive...")
+        logger.info("Uploading output directory to Google Drive (folder=%s)", folder_id)
         try:
             count = upload_output_folder(creds_path, folder_id, output_dir)
-            print(f"Successfully uploaded/updated {count} files in Google Drive.")
-        except Exception as e:
-            print(f"Error during Google Drive upload: {e}")
+            logger.info("Google Drive upload complete: %d file(s) uploaded/updated", count)
+        except Exception:
+            logger.error("Google Drive upload failed", exc_info=True)
 
 
 def _process_speakers(api_slug: str, output_dir: Path) -> None:
-    print(f"\nFetching sessions for slug: {api_slug}...")
+    logger.info("Fetching sessions from Sessionize (slug=REDACTED)")
     try:
         cards = fetch_session_cards(api_slug)
-        print(f"Found {len(cards)} sessions to process.")
-    except Exception as e:
-        print(f"Error fetching sessions: {e}")
+        logger.info("Fetched %d sessions to process", len(cards))
+    except Exception:
+        logger.error("Failed to fetch sessions from Sessionize", exc_info=True)
         return
 
-    # One rembg session for all images to avoid reloading model
     bg_session = new_session()
+    skipped = generated = errors = 0
 
     for i, card in enumerate(cards, 1):
         safe_name = _slugify(card.talk_title)
-        print(f"[{i}/{len(cards)}] Generating card for: {card.talk_title}")
+        logger.info("[%d/%d] Processing: %s", i, len(cards), card.talk_title)
 
         try:
             output_path_rm = output_dir / f"{safe_name}.png"
             output_path_bg = output_dir / f"{safe_name}_original.png"
 
-            # 1. Background Removed version
             if not output_path_rm.exists():
                 result_img_rm = composite_card(card, bg_session, remove_bg=True)
                 if result_img_rm:
                     result_img_rm.save(output_path_rm)
-                    print(f"  Saved to: {output_path_rm}")
+                    logger.info("  Saved (bg removed): %s", output_path_rm.name)
+                    generated += 1
+                else:
+                    logger.warning("  No output produced for: %s", card.talk_title)
             else:
-                print(f"  Skipped (exists): {output_path_rm}")
+                logger.debug("  Skipped (exists): %s", output_path_rm.name)
+                skipped += 1
 
-            # 2. Original Background version
             if not output_path_bg.exists():
                 result_img_bg = composite_card(card, bg_session, remove_bg=False)
                 if result_img_bg:
                     result_img_bg.save(output_path_bg)
-                    print(f"  Saved to: {output_path_bg}")
+                    logger.info("  Saved (original): %s", output_path_bg.name)
+                    generated += 1
+                else:
+                    logger.warning("  No output produced for: %s (original)", card.talk_title)
             else:
-                print(f"  Skipped (exists): {output_path_bg}")
+                logger.debug("  Skipped (exists): %s", output_path_bg.name)
+                skipped += 1
 
         except Exception:
-            logger.error(f"Error generating card for {card.talk_title}", exc_info=True)
+            logger.error("Error generating card for: %s", card.talk_title, exc_info=True)
+            errors += 1
+
+    logger.info(
+        "Speaker cards complete — generated=%d skipped=%d errors=%d",
+        generated,
+        skipped,
+        errors,
+    )
 
 
 def _process_pdfs(api_slug: str, output_dir: Path) -> None:
-
-    print(f"\nFetching sessions for PDFs (slug: {api_slug})...")
+    logger.info("Fetching sessions for PDF assembly (slug=REDACTED)")
     try:
         cards = fetch_session_cards(api_slug)
-    except Exception as e:
-        print(f"Error fetching sessions for PDFs: {e}")
+        logger.info("Fetched %d sessions", len(cards))
+    except Exception:
+        logger.error("Failed to fetch sessions for PDF assembly", exc_info=True)
         return
 
-    track_images = defaultdict(list)
-    track_images_orig = defaultdict(list)
+    track_images: dict[str, list[Path]] = defaultdict(list)
+    track_images_orig: dict[str, list[Path]] = defaultdict(list)
+    missing = 0
 
     for card in cards:
         safe_name = _slugify(card.talk_title)
         path_rm = output_dir / f"{safe_name}.png"
         path_orig = output_dir / f"{safe_name}_original.png"
-
         track_name = card.track or "Unknown Track"
 
         if path_rm.exists():
             track_images[track_name].append(path_rm)
+        else:
+            logger.debug("Missing card (bg removed): %s", path_rm.name)
+            missing += 1
+
         if path_orig.exists():
             track_images_orig[track_name].append(path_orig)
+        else:
+            logger.debug("Missing card (original): %s", path_orig.name)
 
-    print("\nGenerating PDFs from existing speaker cards...")
+    if missing:
+        logger.warning("%d session(s) have no generated card — PDFs may be incomplete", missing)
+
     all_tracks = set(track_images.keys()) | set(track_images_orig.keys())
+    logger.info("Generating PDFs for %d track(s)", len(all_tracks))
 
-    for track_name in all_tracks:
+    for track_name in sorted(all_tracks):
         safe_track = _slugify(track_name)
 
-        # 1. Standard PDF (Background Removed)
         if track_images[track_name]:
-            pdf_path = output_dir / f"{safe_track}.pdf"
-            _create_pdf(track_name, track_images[track_name], pdf_path)
+            _create_pdf(track_name, track_images[track_name], output_dir / f"{safe_track}.pdf")
 
-        # 2. Original PDF (No Background Removal)
         if track_images_orig[track_name]:
-            pdf_path_orig = output_dir / f"{safe_track}_original.pdf"
-            _create_pdf(f"{track_name} (Original)", track_images_orig[track_name], pdf_path_orig)
+            _create_pdf(
+                f"{track_name} (Original)",
+                track_images_orig[track_name],
+                output_dir / f"{safe_track}_original.pdf",
+            )
 
 
 def _create_pdf(label: str, image_paths: list[Path], pdf_path: Path) -> None:
     # Pillow 12+ uses lazy plugin loading; the PDF writer needs JPEG encoder registered
     Image.init()
-    print(f"Generating PDF for track: {label} -> {pdf_path}")
+    logger.info("Generating PDF: %s (%d image(s))", pdf_path.name, len(image_paths))
     try:
         images = []
         for img_path in image_paths:
@@ -216,43 +240,56 @@ def _create_pdf(label: str, image_paths: list[Path], pdf_path: Path) -> None:
 
         if images:
             images[0].save(pdf_path, save_all=True, append_images=images[1:], resolution=100.0)
-            print(f"  Saved PDF: {pdf_path}")
+            logger.info("  Saved PDF: %s (%.1f KB)", pdf_path.name, pdf_path.stat().st_size / 1024)
 
             for im in images:
                 im.close()
+        else:
+            logger.warning("  No images found for PDF track: %s", label)
     except Exception:
-        logger.error(f"Error generating PDF: {pdf_path}", exc_info=True)
+        logger.error("Failed to generate PDF for track: %s", label, exc_info=True)
 
 
 def _process_sponsors(year: str, output_dir: Path) -> None:
-
-    print(f"\nFetching sponsors for year {year}...")
+    logger.info("Fetching sponsors for year %s", year)
     try:
         sponsors = fetch_sponsors(year)
-        print(f"Found {len(sponsors)} sponsors to process.")
-    except Exception as e:
-        print(f"Error fetching sponsors: {e}")
+        logger.info("Fetched %d sponsors", len(sponsors))
+    except Exception:
+        logger.error("Failed to fetch sponsors for year %s", year, exc_info=True)
         return
 
-    print("\nGenerating sponsor cards...")
+    skipped = generated = errors = 0
+
     for i, sponsor in enumerate(sponsors, 1):
         safe_name = _slugify(sponsor.name)
         output_path = output_dir / f"sponsor-{year}_{safe_name}.png"
 
         if output_path.exists():
-            print(f"  Skipped (exists): {output_path}")
+            logger.debug("  Skipped (exists): %s", output_path.name)
+            skipped += 1
             continue
 
-        print(f"[{i}/{len(sponsors)}] Generating card for: {sponsor.name}")
+        logger.info("[%d/%d] Generating sponsor card: %s", i, len(sponsors), sponsor.name)
         try:
             result_img = composite_sponsor_card(sponsor)
             if result_img:
                 result_img.save(output_path)
-                print(f"  Saved to: {output_path}")
+                logger.info("  Saved: %s", output_path.name)
+                generated += 1
             else:
-                print(f"  Skipped (processing failure): {sponsor.name}")
-        except Exception as e:
-            print(f"  Error processing sponsor {sponsor.name}: {e}")
+                logger.warning("  No output produced for sponsor: %s", sponsor.name)
+                errors += 1
+        except Exception:
+            logger.error("Error generating sponsor card: %s", sponsor.name, exc_info=True)
+            errors += 1
+
+    logger.info(
+        "Sponsor cards complete — generated=%d skipped=%d errors=%d",
+        generated,
+        skipped,
+        errors,
+    )
 
 
 if __name__ == "__main__":

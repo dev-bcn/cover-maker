@@ -7,9 +7,7 @@ from src.gdrive_uploader import upload_output_folder
 
 @pytest.fixture
 def mock_google_drive():
-    creds_patch = patch(
-        "src.gdrive_uploader.service_account.Credentials.from_service_account_file"
-    )
+    creds_patch = patch("src.gdrive_uploader.service_account.Credentials.from_service_account_file")
     build_patch = patch("src.gdrive_uploader.build")
     media_patch = patch("src.gdrive_uploader.MediaFileUpload")
 

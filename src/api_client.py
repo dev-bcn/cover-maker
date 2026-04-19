@@ -1,19 +1,22 @@
+import logging
 import os
 
 import requests
 
 from models import SessionCard, Speaker, Sponsor
 
+logger = logging.getLogger(__name__)
+
 SESSIONIZE_BASE_URL = "https://sessionize.com/api/v2"
 
 
 def fetch_session_cards(api_slug: str) -> list[SessionCard]:
     url = f"{SESSIONIZE_BASE_URL}/{api_slug}/view/All"
-    response = requests.get(url)
+    logger.debug("GET %s", url.replace(api_slug, "REDACTED"))
+    response = requests.get(url, timeout=30)
     response.raise_for_status()
     data = response.json()
 
-    # Map speakers by ID
     speaker_lookup: dict[str, Speaker] = {}
     for speaker_data in data.get("speakers", []):
         speaker_id = speaker_data.get("id")
@@ -23,7 +26,6 @@ def fetch_session_cards(api_slug: str) -> list[SessionCard]:
             profile_picture_url=speaker_data.get("profilePicture", ""),
         )
 
-    # Map tracks by item ID
     track_lookup: dict[int, str] = {}
     for cat in data.get("categories", []):
         if "Track" in cat.get("title", ""):
@@ -32,7 +34,6 @@ def fetch_session_cards(api_slug: str) -> list[SessionCard]:
 
     cards: list[SessionCard] = []
     for session_data in data.get("sessions", []):
-        # Skip service and plenum sessions
         if session_data.get("isServiceSession") or session_data.get("isPlenumSession"):
             continue
 
@@ -56,28 +57,42 @@ def fetch_session_cards(api_slug: str) -> list[SessionCard]:
                 )
             )
 
+    logger.info(
+        "Sessionize: %d sessions parsed (%d speakers, %d tracks)",
+        len(cards),
+        len(speaker_lookup),
+        len(track_lookup),
+    )
     return cards
 
 
 def fetch_sponsors(year: str = "2026") -> list[Sponsor]:
-
     token = os.getenv("API_AUTH_TOKEN", "")
-    headers = {}
+    headers: dict[str, str] = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    else:
+        logger.warning("API_AUTH_TOKEN is not set — request may be rejected")
 
     url = f"https://www.devbcn.com/api/sponsors/{year}"
-    response = requests.get(url, headers=headers)
+    logger.debug("GET %s", url)
+    response = requests.get(url, headers=headers, timeout=30)
+
+    if response.status_code == 401:
+        logger.error("Sponsors API returned 401 Unauthorized — check API_AUTH_TOKEN secret")
+    elif response.status_code == 404:
+        logger.error("Sponsors API returned 404 — year %s may not exist yet", year)
+
     response.raise_for_status()
     data = response.json()
 
-    sponsors = []
-    for item in data:
-        sponsors.append(
-            Sponsor(
-                name=item.get("name", ""),
-                category=item.get("category", ""),
-                logo_url=item.get("image", ""),
-            )
+    sponsors = [
+        Sponsor(
+            name=item.get("name", ""),
+            category=item.get("category", ""),
+            logo_url=item.get("image", ""),
         )
+        for item in data
+    ]
+    logger.info("Sponsors API: %d sponsors fetched for year %s", len(sponsors), year)
     return sponsors

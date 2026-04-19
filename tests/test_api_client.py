@@ -44,7 +44,6 @@ def test_fetch_skips_unconfirmed_speakers(mock_sessionize_response: dict) -> Non
         rsps.add(responses.GET, url, json=mock_sessionize_response, status=200)
         cards = fetch_session_cards(api_slug)
 
-
         assert len(cards) == 2
 
 
@@ -56,7 +55,7 @@ def test_fetch_sponsors(monkeypatch) -> None:
         {
             "name": "Edpuzzle",
             "category": "Premium Sponsor",
-            "image": "https://www.devbcn.com/edpuzzle.svg"
+            "image": "https://www.devbcn.com/edpuzzle.svg",
         }
     ]
 
@@ -67,6 +66,7 @@ def test_fetch_sponsors(monkeypatch) -> None:
             if auth_header != "Bearer test-token":
                 return (401, {}, "Unauthorized")
             import json
+
             return (200, {"Content-Type": "application/json"}, json.dumps(mock_data))
 
         rsps.add_callback(
@@ -75,7 +75,7 @@ def test_fetch_sponsors(monkeypatch) -> None:
             callback=request_callback,
             content_type="application/json",
         )
-        
+
         sponsors = fetch_sponsors(year)
 
         assert len(sponsors) == 1

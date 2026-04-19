@@ -45,12 +45,7 @@ def mock_sessionize_response():
             {"id": "u1", "fullName": SPEAKER_ONE_NAME, "profilePicture": SPEAKER_ONE_PIC},
             {"id": "u2", "fullName": "Speaker Two", "profilePicture": "https://example.com/p2.jpg"},
         ],
-        "categories": [
-            {
-                "title": "Track",
-                "items": [{"id": 123, "name": "Testing Track"}]
-            }
-        ]
+        "categories": [{"title": "Track", "items": [{"id": 123, "name": "Testing Track"}]}],
     }
 
 

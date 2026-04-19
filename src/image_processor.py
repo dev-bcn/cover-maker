@@ -232,7 +232,7 @@ def composite_sponsor_card(sponsor: Sponsor) -> Image.Image | None:
         max_logo_width = int(canvas_width * 0.75)
         src_w, src_h = subject.size
         scale = min(max_logo_width / src_w, SPEAKER_TARGET_HEIGHT / src_h)
-        
+
         # Resize once with the calculated scale
         new_w = int(src_w * scale)
         new_h = int(src_h * scale)
@@ -240,7 +240,7 @@ def composite_sponsor_card(sponsor: Sponsor) -> Image.Image | None:
 
         # Draw sponsor logo centered (acting as single speaker)
         paste_y = SPEAKER_ANCHOR_Y - subject.size[1]
-        
+
         # we center based on canvas width vs subject width
         logo_x = (canvas_width - subject.size[0]) // 2
 

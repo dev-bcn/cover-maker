@@ -179,9 +179,9 @@ def _process_pdfs(api_slug: str, output_dir: Path) -> None:
         safe_name = _slugify(card.talk_title)
         path_rm = output_dir / f"{safe_name}.png"
         path_orig = output_dir / f"{safe_name}_original.png"
-        
+
         track_name = card.track or "Unknown Track"
-        
+
         if path_rm.exists():
             track_images[track_name].append(path_rm)
         if path_orig.exists():
@@ -189,10 +189,10 @@ def _process_pdfs(api_slug: str, output_dir: Path) -> None:
 
     print("\nGenerating PDFs from existing speaker cards...")
     all_tracks = set(track_images.keys()) | set(track_images_orig.keys())
-    
+
     for track_name in all_tracks:
         safe_track = _slugify(track_name)
-        
+
         # 1. Standard PDF (Background Removed)
         if track_images[track_name]:
             pdf_path = output_dir / f"{safe_track}.pdf"
@@ -205,6 +205,8 @@ def _process_pdfs(api_slug: str, output_dir: Path) -> None:
 
 
 def _create_pdf(label: str, image_paths: list[Path], pdf_path: Path) -> None:
+    # Pillow 12+ uses lazy plugin loading; the PDF writer needs JPEG encoder registered
+    Image.init()
     print(f"Generating PDF for track: {label} -> {pdf_path}")
     try:
         images = []
@@ -215,7 +217,7 @@ def _create_pdf(label: str, image_paths: list[Path], pdf_path: Path) -> None:
         if images:
             images[0].save(pdf_path, save_all=True, append_images=images[1:], resolution=100.0)
             print(f"  Saved PDF: {pdf_path}")
-            
+
             for im in images:
                 im.close()
     except Exception:

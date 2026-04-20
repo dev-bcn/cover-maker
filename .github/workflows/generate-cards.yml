@@ -39,7 +39,7 @@ jobs:
         run: uv run python src/generate_cards.py --speakers
 
       - name: Upload speaker artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: speaker-configs
           path: output/*.png
@@ -86,7 +86,7 @@ jobs:
         run: uv run python src/generate_cards.py --sponsors
 
       - name: Upload sponsor artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sponsor-configs
           path: output/sponsor-*.png

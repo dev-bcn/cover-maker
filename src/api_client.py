@@ -54,6 +54,7 @@ def fetch_session_cards(api_slug: str) -> list[SessionCard]:
                     talk_title=session_data.get("title", ""),
                     speakers=tuple(session_speakers),
                     track=session_track,
+                    starts_at=session_data.get("startsAt"),
                 )
             )
 

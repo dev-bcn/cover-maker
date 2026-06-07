@@ -1,4 +1,7 @@
+import datetime as dt
 import logging
+import re
+import unicodedata
 from io import BytesIO
 from pathlib import Path
 
@@ -14,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level constants (fill in values after placing assets)
 TEMPLATE_PATH: Path = Path("assets") / "base_template.png"
+SPEAKER_VIDEO_TEMPLATE_PATH: Path = Path("assets") / "speaker-video-template.png"
 FONT_PATH: Path = Path("assets") / "DejaVuSans.ttf"
 
 # Layout — pixel coordinates relative to template canvas
@@ -32,6 +36,69 @@ TEXT_SAFE_WIDTH_RATIO: float = 0.85
 CIRCLE_DIAMETER: int = 420
 CIRCLE_BORDER_COLOR: tuple[int, int, int, int] = (80, 80, 80, 140)
 CIRCLE_BORDER_WIDTH: int = 12
+
+VIDEO_SPEAKER_TEXT_X: int = 632
+VIDEO_SPEAKER_TEXT_Y: int = 1301
+VIDEO_SESSION_TEXT_X: int = 632
+VIDEO_SESSION_TEXT_Y: int = 1393
+VIDEO_SPEAKER_TEXT_COLOR: tuple[int, int, int] = (62, 187, 235)
+VIDEO_SESSION_TEXT_COLOR: tuple[int, int, int] = (255, 255, 255)
+VIDEO_TEXT_SHADOW_COLOR: tuple[int, int, int] = (0, 0, 0)
+VIDEO_TEXT_SHADOW_OFFSET: tuple[int, int] = (3, 3)
+VIDEO_SPEAKER_FONT_SIZE: int = 54
+VIDEO_SESSION_FONT_SIZE: int = 42
+VIDEO_TEXT_RIGHT_MARGIN: int = 120
+VIDEO_SESSION_LINE_SPACING: int = 6
+VIDEO_SESSION_TARGET_RATIO: float = 0.68
+VIDEO_SESSION_SPLIT_RATIO: float = 0.9
+_WEAK_ENDINGS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "by",
+    "de",
+    "del",
+    "el",
+    "en",
+    "for",
+    "in",
+    "la",
+    "las",
+    "le",
+    "los",
+    "of",
+    "o",
+    "on",
+    "or",
+    "para",
+    "por",
+    "the",
+    "to",
+    "un",
+    "una",
+    "unos",
+    "unas",
+    "with",
+    "y",
+    "e",
+}
+
+_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F300-\U0001F5FF"
+    "\U0001F600-\U0001F64F"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F700-\U0001F77F"
+    "\U0001F780-\U0001F7FF"
+    "\U0001F800-\U0001F8FF"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA00-\U0001FAFF"
+    "\u2600-\u26FF"
+    "\u2700-\u27BF"
+    "]+"
+)
 
 
 def remove_background(image_bytes: bytes, session: any) -> Image.Image:
@@ -74,6 +141,155 @@ def apply_circle_crop(image: Image.Image, diameter: int = CIRCLE_DIAMETER) -> Im
     )
 
     return result
+
+
+def _load_font(font_size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    try:
+        return ImageFont.truetype(str(FONT_PATH), font_size)
+    except Exception:
+        logger.warning(
+            "Custom font not found at %s — falling back to default", FONT_PATH, exc_info=True
+        )
+        return ImageFont.load_default()
+
+
+def _fit_text_font(
+    text: str,
+    draw: ImageDraw.ImageDraw,
+    base_font_size: int,
+    max_width: int,
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    font = _load_font(base_font_size)
+    if isinstance(font, ImageFont.FreeTypeFont):
+        size = base_font_size
+        while size > 12:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            if bbox[2] - bbox[0] <= max_width:
+                return font
+            size -= 2
+            font = ImageFont.truetype(str(FONT_PATH), size)
+
+    return font
+
+
+def _draw_text_with_shadow(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    position: tuple[int, int],
+    font: ImageFont.ImageFont,
+    fill: tuple[int, int, int],
+) -> None:
+    x, y = position
+    shadow_dx, shadow_dy = VIDEO_TEXT_SHADOW_OFFSET
+    draw.text((x + shadow_dx, y + shadow_dy), text, font=font, fill=VIDEO_TEXT_SHADOW_COLOR)
+    draw.text((x, y), text, font=font, fill=fill)
+
+
+def _strip_emojis(text: str) -> str:
+    text = _EMOJI_PATTERN.sub("", text)
+    text = text.replace("\ufe0f", "").replace("\u200d", "")
+    return "".join(ch for ch in text if unicodedata.category(ch) != "So")
+
+
+def _split_text_into_two_lines(
+    text: str,
+    font: ImageFont.ImageFont,
+    draw: ImageDraw.ImageDraw,
+    max_width: int,
+) -> list[str]:
+    words = text.split()
+    if len(words) < 2:
+        return [text]
+
+    target_width = int(max_width * VIDEO_SESSION_TARGET_RATIO)
+    best_split: tuple[int, int, int, str, str] | None = None
+    for split_index in range(1, len(words)):
+        first = " ".join(words[:split_index])
+        second = " ".join(words[split_index:])
+        first_bbox = draw.textbbox((0, 0), first, font=font)
+        second_bbox = draw.textbbox((0, 0), second, font=font)
+        first_width = first_bbox[2] - first_bbox[0]
+        second_width = second_bbox[2] - second_bbox[0]
+
+        if first_width <= max_width and second_width <= max_width:
+            ending_word = words[split_index - 1].strip(".,;:!?¿¡").lower()
+            weak_ending_penalty = 1 if ending_word in _WEAK_ENDINGS else 0
+            candidate = (weak_ending_penalty, abs(first_width - target_width), -second_width, first, second)
+            if best_split is None or candidate < best_split:
+                best_split = candidate
+
+    if best_split is not None:
+        return [best_split[3], best_split[4]]
+
+    return _wrap_text(text, font, max_width, draw)
+
+
+def _parse_starts_at(starts_at: str | None) -> dt.datetime | None:
+    if not starts_at:
+        return None
+
+    normalized = starts_at.replace("Z", "+00:00")
+    try:
+        return dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        logger.warning("Unable to parse session start time: %s", starts_at)
+        return None
+
+
+def _render_video_text_block(draw: ImageDraw.ImageDraw, card: SessionCard, canvas_width: int) -> None:
+    speaker_name = card.speakers[0].full_name if card.speakers else "Unknown Speaker"
+    session_name = _strip_emojis(card.talk_title).strip()
+
+    speaker_max_width = canvas_width - VIDEO_SPEAKER_TEXT_X - VIDEO_TEXT_RIGHT_MARGIN
+    session_max_width = canvas_width - VIDEO_SESSION_TEXT_X - VIDEO_TEXT_RIGHT_MARGIN
+
+    speaker_font = _fit_text_font(
+        speaker_name, draw, VIDEO_SPEAKER_FONT_SIZE, max_width=speaker_max_width
+    )
+
+    _draw_text_with_shadow(
+        draw,
+        speaker_name,
+        (VIDEO_SPEAKER_TEXT_X, VIDEO_SPEAKER_TEXT_Y),
+        speaker_font,
+        VIDEO_SPEAKER_TEXT_COLOR,
+    )
+
+    base_session_font = _load_font(VIDEO_SESSION_FONT_SIZE)
+    base_session_bbox = draw.textbbox((0, 0), session_name, font=base_session_font)
+    base_session_width = base_session_bbox[2] - base_session_bbox[0]
+
+    if base_session_width > int(session_max_width * VIDEO_SESSION_SPLIT_RATIO):
+        session_font = base_session_font
+        session_lines = _split_text_into_two_lines(session_name, session_font, draw, session_max_width)
+    else:
+        session_font = _fit_text_font(
+            session_name, draw, VIDEO_SESSION_FONT_SIZE, max_width=session_max_width
+        )
+        session_lines = [session_name]
+
+    current_y = VIDEO_SESSION_TEXT_Y
+    for line in session_lines:
+        _draw_text_with_shadow(
+            draw,
+            line,
+            (VIDEO_SESSION_TEXT_X, current_y),
+            session_font,
+            VIDEO_SESSION_TEXT_COLOR,
+        )
+        line_bbox = draw.textbbox((0, 0), line, font=session_font)
+        current_y += (line_bbox[3] - line_bbox[1]) + VIDEO_SESSION_LINE_SPACING
+
+
+def composite_speaker_video_card(card: SessionCard) -> Image.Image:
+    if not SPEAKER_VIDEO_TEMPLATE_PATH.exists():
+        canvas = Image.new("RGBA", (2688, 1536), (200, 200, 200, 255))
+    else:
+        canvas = Image.open(SPEAKER_VIDEO_TEMPLATE_PATH).convert("RGBA")
+
+    draw = ImageDraw.Draw(canvas)
+    _render_video_text_block(draw, card, canvas.width)
+    return canvas.convert("RGB")
 
 
 def composite_card(card: SessionCard, session: any, remove_bg: bool = True) -> Image.Image:

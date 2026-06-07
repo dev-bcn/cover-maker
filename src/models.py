@@ -14,6 +14,7 @@ class SessionCard:
     talk_title: str
     speakers: tuple[Speaker, ...]
     track: str | None = None
+    starts_at: str | None = None
 
 
 @dataclass(frozen=True)

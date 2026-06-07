@@ -1,12 +1,17 @@
 import json
 import logging
 import os
+import datetime as dt
 import unittest.mock as mock
 
 import pytest
 from PIL import Image
 
-from src.generate_cards import _resolve_credentials_path, _slugify
+from src.generate_cards import (
+    _resolve_credentials_path,
+    _slugify,
+    _speaker_video_filename,
+)
 
 
 def test_resolve_credentials_from_base64(monkeypatch, tmp_path) -> None:
@@ -46,6 +51,25 @@ def test_slugify() -> None:
     assert _slugify("A" * 100) == "a" * 80
 
 
+def test_speaker_video_filename_falls_back_to_now(monkeypatch, dummy_card_single) -> None:
+    import src.generate_cards
+
+    class FixedDateTime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 6, 7, 9, 45)
+
+    monkeypatch.setattr(src.generate_cards.datetime, "datetime", FixedDateTime)
+    card = dummy_card_single.__class__(
+        talk_title=dummy_card_single.talk_title,
+        speakers=dummy_card_single.speakers,
+        track=dummy_card_single.track,
+        starts_at="not-a-timestamp",
+    )
+
+    assert _speaker_video_filename(card) == "07-06-2026-09_45-speaker-one.png"
+
+
 def test_main_with_sessions(tmp_path, monkeypatch, dummy_card_single, dummy_card_dual) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("SESSIONIZE_API_SLUG", "test-slug")
@@ -59,11 +83,17 @@ def test_main_with_sessions(tmp_path, monkeypatch, dummy_card_single, dummy_card
             with mock.patch(
                 "src.generate_cards.composite_card", return_value=Image.new("RGB", (100, 100))
             ):
-                src.generate_cards.main()
+                with mock.patch(
+                    "src.generate_cards.composite_speaker_video_card",
+                    return_value=Image.new("RGB", (100, 100)),
+                ):
+                    src.generate_cards.main()
 
-                assert os.path.isfile("output/single-talk.png")
-                assert os.path.isfile("output/single-talk_original.png")
-                assert os.path.isfile("output/dual-talk.png")
+                    video_name = _speaker_video_filename(dummy_card_single)
+                    assert os.path.isfile("output/sessions/single-talk.png")
+                    assert os.path.isfile("output/sessions/single-talk_original.png")
+                    assert os.path.isfile(f"output/video-templates/{video_name}")
+                    assert os.path.isfile("output/sessions/dual-talk.png")
 
 
 def test_main_with_upload(tmp_path, monkeypatch, dummy_card_single) -> None:
@@ -223,9 +253,13 @@ def test_process_pdfs_warns_on_missing_cards(tmp_path, monkeypatch, caplog, slug
     )
     output_dir = tmp_path / "output"
     output_dir.mkdir()
+    sessions_dir = output_dir / "sessions"
+    sessions_dir.mkdir()
+    pdf_tracks_dir = output_dir / "pdf-tracks"
+    pdf_tracks_dir.mkdir()
 
     with mock.patch("src.generate_cards.fetch_session_cards", return_value=[card]):
         with caplog.at_level(logging.WARNING, logger="src.generate_cards"):
-            src.generate_cards._process_pdfs("slug", output_dir)
+            src.generate_cards._process_pdfs("slug", sessions_dir, pdf_tracks_dir)
 
     assert any("incomplete" in r.message for r in caplog.records)

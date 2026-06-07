@@ -14,7 +14,12 @@ from rembg import new_session
 
 from api_client import fetch_session_cards, fetch_sponsors
 from gdrive_uploader import upload_output_folder
-from image_processor import composite_card, composite_sponsor_card
+from image_processor import (
+    composite_card,
+    composite_speaker_video_card,
+    composite_sponsor_card,
+)
+from models import SessionCard
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +28,43 @@ def _slugify(text: str) -> str:
     slug = re.sub(r"[^\w\s-]", "", text.lower())
     slug = re.sub(r"[\s-]+", "-", slug).strip("-")
     return slug[:80]
+
+
+def _parse_session_start(starts_at: str | None) -> datetime.datetime | None:
+    if not starts_at:
+        return None
+
+    try:
+        return datetime.datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning("Unable to parse session start timestamp: %s", starts_at)
+        return None
+
+
+def _speaker_video_filename(card: SessionCard) -> str:
+    start_at = _parse_session_start(card.starts_at)
+    if start_at is None:
+        logger.warning(
+            "Missing session start timestamp for %s — falling back to current time",
+            card.talk_title,
+        )
+        start_at = datetime.datetime.now()
+
+    first_speaker = card.speakers[0].full_name if card.speakers else "unknown-speaker"
+    timestamp = start_at.strftime("%d-%m-%Y-%H_%M")
+    return f"{timestamp}-{_slugify(first_speaker)}.png"
+
+
+def _output_paths(root_dir: Path) -> tuple[Path, Path, Path]:
+    sessions_dir = root_dir / "sessions"
+    pdf_tracks_dir = root_dir / "pdf-tracks"
+    video_templates_dir = root_dir / "video-templates"
+
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    pdf_tracks_dir.mkdir(parents=True, exist_ok=True)
+    video_templates_dir.mkdir(parents=True, exist_ok=True)
+
+    return sessions_dir, pdf_tracks_dir, video_templates_dir
 
 
 def _resolve_credentials_path() -> str | None:
@@ -85,13 +127,14 @@ def main() -> None:
 
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
+    sessions_dir, pdf_tracks_dir, video_templates_dir = _output_paths(output_dir)
 
     if do_speakers:
         api_slug = os.getenv("SESSIONIZE_API_SLUG")
         if not api_slug:
             logger.error("SESSIONIZE_API_SLUG is not set — cannot generate speaker cards")
             return
-        _process_speakers(api_slug, output_dir)
+        _process_speakers(api_slug, sessions_dir, video_templates_dir)
 
     if do_sponsors:
         _process_sponsors(args.year, output_dir)
@@ -101,7 +144,7 @@ def main() -> None:
         if not api_slug:
             logger.error("SESSIONIZE_API_SLUG is not set — cannot generate PDFs")
             return
-        _process_pdfs(api_slug, output_dir)
+        _process_pdfs(api_slug, sessions_dir, pdf_tracks_dir)
 
     if args.upload:
         creds_path = _resolve_credentials_path()
@@ -122,7 +165,7 @@ def main() -> None:
             logger.error("Google Drive upload failed", exc_info=True)
 
 
-def _process_speakers(api_slug: str, output_dir: Path) -> None:
+def _process_speakers(api_slug: str, sessions_dir: Path, video_templates_dir: Path) -> None:
     logger.info("Fetching sessions from Sessionize (slug=REDACTED)")
     try:
         cards = fetch_session_cards(api_slug)
@@ -139,8 +182,8 @@ def _process_speakers(api_slug: str, output_dir: Path) -> None:
         logger.info("[%d/%d] Processing: %s", i, len(cards), card.talk_title)
 
         try:
-            output_path_rm = output_dir / f"{safe_name}.png"
-            output_path_bg = output_dir / f"{safe_name}_original.png"
+            output_path_rm = sessions_dir / f"{safe_name}.png"
+            output_path_bg = sessions_dir / f"{safe_name}_original.png"
 
             if not output_path_rm.exists():
                 result_img_rm = composite_card(card, bg_session, remove_bg=True)
@@ -166,6 +209,19 @@ def _process_speakers(api_slug: str, output_dir: Path) -> None:
                 logger.debug("  Skipped (exists): %s", output_path_bg.name)
                 skipped += 1
 
+            output_path_video = video_templates_dir / _speaker_video_filename(card)
+            if not output_path_video.exists():
+                result_img_video = composite_speaker_video_card(card)
+                if result_img_video:
+                    result_img_video.save(output_path_video)
+                    logger.info("  Saved (speaker video): %s", output_path_video.name)
+                    generated += 1
+                else:
+                    logger.warning("  No output produced for speaker video: %s", card.talk_title)
+            else:
+                logger.debug("  Skipped (exists): %s", output_path_video.name)
+                skipped += 1
+
         except Exception:
             logger.error("Error generating card for: %s", card.talk_title, exc_info=True)
             errors += 1
@@ -178,7 +234,7 @@ def _process_speakers(api_slug: str, output_dir: Path) -> None:
     )
 
 
-def _process_pdfs(api_slug: str, output_dir: Path) -> None:
+def _process_pdfs(api_slug: str, sessions_dir: Path, pdf_tracks_dir: Path) -> None:
     logger.info("Fetching sessions for PDF assembly (slug=REDACTED)")
     try:
         cards = fetch_session_cards(api_slug)
@@ -193,8 +249,8 @@ def _process_pdfs(api_slug: str, output_dir: Path) -> None:
 
     for card in cards:
         safe_name = _slugify(card.talk_title)
-        path_rm = output_dir / f"{safe_name}.png"
-        path_orig = output_dir / f"{safe_name}_original.png"
+        path_rm = sessions_dir / f"{safe_name}.png"
+        path_orig = sessions_dir / f"{safe_name}_original.png"
         track_name = card.track or "Unknown Track"
 
         if path_rm.exists():
@@ -218,13 +274,13 @@ def _process_pdfs(api_slug: str, output_dir: Path) -> None:
         safe_track = _slugify(track_name)
 
         if track_images[track_name]:
-            _create_pdf(track_name, track_images[track_name], output_dir / f"{safe_track}.pdf")
+            _create_pdf(track_name, track_images[track_name], pdf_tracks_dir / f"{safe_track}.pdf")
 
         if track_images_orig[track_name]:
             _create_pdf(
                 f"{track_name} (Original)",
                 track_images_orig[track_name],
-                output_dir / f"{safe_track}_original.pdf",
+                pdf_tracks_dir / f"{safe_track}_original.pdf",
             )
 
 

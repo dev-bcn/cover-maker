@@ -73,6 +73,38 @@ def test_upload_output_folder_update_existing(tmp_path, mock_google_drive):
     )
 
 
+def test_upload_output_folder_recurses_into_subfolders(tmp_path, mock_google_drive):
+    output_dir = tmp_path / "output"
+    nested_dir = output_dir / "sessions"
+    nested_dir.mkdir(parents=True)
+    (nested_dir / "card1.png").write_text("fake-data")
+
+    mock_service = mock_google_drive["service"]
+    mock_service.files().list().execute.return_value = {"files": []}
+
+    count = upload_output_folder("fake_creds.json", "fake_folder_id", output_dir)
+
+    assert count == 1
+    mock_service.files().create.assert_called_once()
+
+
+def test_upload_output_folder_updates_existing_nested_file(tmp_path, mock_google_drive):
+    output_dir = tmp_path / "output"
+    nested_dir = output_dir / "sessions"
+    nested_dir.mkdir(parents=True)
+    (nested_dir / "card1.png").write_text("fake-data")
+
+    mock_service = mock_google_drive["service"]
+    mock_service.files().list().execute.return_value = {
+        "files": [{"id": "id123", "name": "card1.png"}]
+    }
+
+    count = upload_output_folder("fake_creds.json", "fake_folder_id", output_dir)
+
+    assert count == 1
+    mock_service.files().update.assert_called_once()
+
+
 def test_upload_output_folder_auth_failure(tmp_path):
     output_dir = tmp_path / "output"
     output_dir.mkdir()

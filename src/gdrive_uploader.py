@@ -54,7 +54,7 @@ def upload_output_folder(
     error_count = 0
 
     for glob_pattern, mimetype in _UPLOAD_TYPES:
-        files = sorted(output_dir.glob(glob_pattern))
+        files = sorted(output_dir.rglob(glob_pattern))
         if not files:
             logger.debug("No files matched pattern %s in %s", glob_pattern, output_dir)
             continue

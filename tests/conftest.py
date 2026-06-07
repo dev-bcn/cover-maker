@@ -18,6 +18,7 @@ def mock_sessionize_response():
                 "isPlenumSession": False,
                 "speakers": ["u1"],
                 "categoryItems": [123],
+                "startsAt": "2026-06-07T12:30:00Z",
             },
             {
                 "id": "s2",
@@ -25,6 +26,7 @@ def mock_sessionize_response():
                 "isServiceSession": False,
                 "isPlenumSession": False,
                 "speakers": ["u1", "u2"],
+                "startsAt": "2026-06-07T14:00:00Z",
             },
             {
                 "id": "s3",
@@ -62,11 +64,20 @@ def rgba_test_image():
 @pytest.fixture
 def dummy_card_single():
     s1 = Speaker(id="u1", full_name=SPEAKER_ONE_NAME, profile_picture_url=SPEAKER_ONE_PIC)
-    return SessionCard(talk_title="Single Talk", speakers=(s1,), track="Testing Track")
+    return SessionCard(
+        talk_title="Single Talk",
+        speakers=(s1,),
+        track="Testing Track",
+        starts_at="2026-06-07T12:30:00Z",
+    )
 
 
 @pytest.fixture
 def dummy_card_dual():
     s1 = Speaker(id="u1", full_name=SPEAKER_ONE_NAME, profile_picture_url=SPEAKER_ONE_PIC)
     s2 = Speaker(id="u2", full_name="Speaker Two", profile_picture_url="https://example.com/p2.jpg")
-    return SessionCard(talk_title="Dual Talk", speakers=(s1, s2))
+    return SessionCard(
+        talk_title="Dual Talk",
+        speakers=(s1, s2),
+        starts_at="2026-06-07T14:00:00Z",
+    )

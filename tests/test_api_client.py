@@ -16,11 +16,13 @@ def test_fetch_returns_correct_cards(mock_sessionize_response: dict) -> None:
         assert cards[0].talk_title == "Single Speaker Talk"
         assert len(cards[0].speakers) == 1
         assert cards[0].speakers[0].full_name == "Speaker One"
+        assert cards[0].starts_at == "2026-06-07T12:30:00Z"
 
         assert cards[1].talk_title == "Dual Speaker Talk"
         assert len(cards[1].speakers) == 2
         assert cards[1].speakers[0].full_name == "Speaker One"
         assert cards[1].speakers[1].full_name == "Speaker Two"
+        assert cards[1].starts_at == "2026-06-07T14:00:00Z"
 
 
 def test_fetch_skips_unconfirmed_speakers(mock_sessionize_response: dict) -> None:

@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 from src.image_processor import (
     _wrap_text,
     apply_circle_crop,
+    composite_speaker_video_card,
     normalize_speaker_image,
     remove_background,
 )
@@ -143,6 +144,91 @@ def test_composite_sponsor_card(rgba_test_image) -> None:
             assert result.size == (1080, 1350)
             assert result.mode == "RGB"
             assert mock_get.call_count == 1
+
+
+def test_composite_speaker_video_card(dummy_card_single, tmp_path) -> None:
+    import unittest.mock as mock
+
+    import src.image_processor
+
+    template = Image.new("RGBA", (2688, 1536), (20, 20, 20, 255))
+    template_path = tmp_path / "speaker-video-template.png"
+    template.save(template_path)
+
+    with mock.patch.object(src.image_processor, "SPEAKER_VIDEO_TEMPLATE_PATH", template_path):
+        result = composite_speaker_video_card(dummy_card_single)
+
+    assert isinstance(result, Image.Image)
+    assert result.size == (2688, 1536)
+    assert result.mode == "RGB"
+
+
+def test_split_text_into_two_lines_for_video_title() -> None:
+    from PIL import ImageFont
+
+    from src.image_processor import _split_text_into_two_lines
+
+    img = Image.new("RGB", (4000, 200))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("assets/DejaVuSans.ttf", 36)
+    title = (
+        "The Sound of Your Secrets: Teaching Your Model to Spy, So You Can Learn to Defend "
+        "The Sound of Your Secrets: Teaching Your Model to Spy, So You Can Learn to Defend"
+    )
+
+    lines = _split_text_into_two_lines(title, font, draw, 3000)
+
+    assert len(lines) == 2
+    assert all(
+        (
+            draw.textbbox((0, 0), line, font=font)[2]
+            - draw.textbbox((0, 0), line, font=font)[0]
+        )
+        <= 3000
+        for line in lines
+    )
+
+
+def test_split_text_into_two_lines_breaks_after_navegador() -> None:
+    from PIL import ImageFont
+
+    from src.image_processor import _split_text_into_two_lines
+
+    img = Image.new("RGB", (4000, 200))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("assets/DejaVuSans.ttf", 42)
+    title = "Killing iframe flicker: cómo esquivamos una limitación del navegador para evitar una mala UX"
+
+    lines = _split_text_into_two_lines(title, font, draw, 1936)
+
+    assert lines == [
+        "Killing iframe flicker: cómo esquivamos una limitación del navegador",
+        "para evitar una mala UX",
+    ]
+
+
+def test_split_text_into_two_lines_breaks_after_platform() -> None:
+    from PIL import ImageFont
+
+    from src.image_processor import _split_text_into_two_lines
+
+    img = Image.new("RGB", (4000, 200))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("assets/DejaVuSans.ttf", 42)
+    title = "How I Build a cloud agnostic, kubernetes as a service platform 100% OSS in a month."
+
+    lines = _split_text_into_two_lines(title, font, draw, 1936)
+
+    assert lines == [
+        "How I Build a cloud agnostic, kubernetes as a service platform",
+        "100% OSS in a month.",
+    ]
+
+
+def test_strip_emojis_removes_symbols() -> None:
+    from src.image_processor import _strip_emojis
+
+    assert _strip_emojis("🎤 Killing iframe flicker") == " Killing iframe flicker"
 
 
 def test_apply_circle_crop_shape() -> None:

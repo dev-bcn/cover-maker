@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: speaker-configs
-          path: output/*.png
+          path: output/**
           if-no-files-found: ignore
 
   generate-sponsors:
